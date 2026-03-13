@@ -1,0 +1,46 @@
+title: Blockchain API Call from Node.js Build Process
+id: a8404200-0001-0001-0001-000000000001
+status: experimental
+description: |
+  Detects Node.js build processes making HTTP requests to blockchain RPC endpoints.
+  No legitimate web application build process should contact TRON, Aptos, or BSC APIs
+  during build. These connections indicate blockchain-based C2 resolution.
+author: Guardian Project
+date: 2026/02/20
+modified: 2026/02/20
+references:
+  - https://attack.mitre.org/techniques/T1102/002/
+  - https://attack.mitre.org/techniques/T1071/001/
+tags:
+  - attack.command_and_control
+  - attack.t1102.002
+  - attack.t1071.001
+logsource:
+  category: proxy
+  product: any
+detection:
+  selection_process:
+    ParentImage|endswith:
+      - '\node.exe'
+      - '/node'
+      - '\npm.cmd'
+      - '\npx.cmd'
+      - '\pnpm.exe'
+      - '/pnpm'
+      - '\next.exe'
+      - '/next'
+      - '\vite'
+      - '\webpack'
+  selection_destination:
+    DestinationHostname|contains:
+      - 'trongrid.io'
+      - 'aptoslabs.com'
+      - 'bsc-dataseed'
+      - 'bsc-rpc.publicnode.com'
+      - 'mainnet.aptoslabs.com'
+  condition: selection_process and selection_destination
+level: critical
+falsepositives:
+  - Web3/blockchain development projects that legitimately use these APIs during build
+  - Cryptocurrency trading applications running in Node.js
+  - DeFi protocol frontend builds (would need explicit allowlisting)

@@ -1,0 +1,33 @@
+# =============================================================================
+# CODEOWNERS — Security-Critical File Protection
+# =============================================================================
+# Enforces mandatory review for files commonly targeted by supply chain attacks.
+# Copy this file to .github/CODEOWNERS in your repository.
+#
+# Prerequisites:
+#   1. Create the @security-team GitHub team in your organization
+#   2. Enable branch protection on your default branch
+#   3. Check "Require review from Code Owners" in branch protection settings
+# =============================================================================
+
+# Build configuration files — primary injection target
+*.config.*          @security-team
+postcss.config.*    @security-team
+next.config.*       @security-team
+tailwind.config.*   @security-team
+vite.config.*       @security-team
+webpack.config.*    @security-team
+
+# CI/CD workflows — prevents pipeline manipulation
+.github/workflows/* @security-team
+
+# Batch files — should not exist in JS/TS repos
+*.bat               @security-team
+
+# Environment files — contain secrets
+.env*               @security-team
+
+# Package manifests — controls dependency tree
+package.json        @security-team
+package-lock.json   @security-team
+pnpm-lock.yaml      @security-team

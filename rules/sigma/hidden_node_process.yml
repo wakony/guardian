@@ -1,0 +1,44 @@
+title: Hidden Detached Node.js Child Process Spawned During Build
+id: a8404200-0002-0001-0001-000000000001
+status: experimental
+description: |
+  Detects Node.js spawning a hidden detached child process using the -e (eval) flag.
+  Supply chain attacks use this pattern to execute C2 payloads that survive after
+  the parent build process exits, hidden from the taskbar and task manager.
+author: Guardian Project
+date: 2026/02/20
+modified: 2026/02/20
+references:
+  - https://attack.mitre.org/techniques/T1059/007/
+  - https://attack.mitre.org/techniques/T1564/003/
+tags:
+  - attack.execution
+  - attack.t1059.007
+  - attack.defense_evasion
+  - attack.t1564.003
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection:
+    Image|endswith: '\node.exe'
+    CommandLine|contains:
+      - ' -e '
+      - ' --eval '
+    ParentImage|endswith: '\node.exe'
+  filter_testing:
+    CommandLine|contains:
+      - 'jest'
+      - 'mocha'
+      - 'vitest'
+      - 'ts-node'
+      - 'tsx'
+      - 'esbuild'
+      - 'prettier'
+      - 'eslint'
+  condition: selection and not filter_testing
+level: high
+falsepositives:
+  - Legitimate build tools that spawn node -e for quick evaluations
+  - Test runners that use eval mode for code transformation
+  - Some bundlers that use child node processes (usually with specific identifiable args)

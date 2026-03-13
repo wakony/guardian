@@ -1,0 +1,166 @@
+name: Commit Verification
+on: [push]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-commits:
+    name: Verify Commit Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify merge commit authenticity
+        run: |
+          set -euo pipefail
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          # Handle new branch (before is all zeros)
+          if echo "$BEFORE" | grep -qE '^0+$'; then
+            COMMIT_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+            if [ "$COMMIT_COUNT" -eq 0 ]; then
+              echo "Empty repository. Nothing to verify."
+              exit 0
+            fi
+            if [ "$COMMIT_COUNT" -lt 10 ]; then
+              MERGE_COMMITS=$(git rev-list --merges HEAD 2>/dev/null || true)
+            else
+              MERGE_COMMITS=$(git rev-list --merges HEAD~10..HEAD 2>/dev/null || true)
+            fi
+          else
+            MERGE_COMMITS=$(git rev-list --merges "${BEFORE}..${AFTER}" 2>/dev/null || true)
+          fi
+
+          if [ -z "$MERGE_COMMITS" ]; then
+            echo "No merge commits in this push. Skipping merge verification."
+            exit 0
+          fi
+
+          FORGED=0
+
+          while IFS= read -r COMMIT; do
+            [ -z "$COMMIT" ] && continue
+
+            CN=$(git log -1 --format='%cn' "$COMMIT")
+            CE=$(git log -1 --format='%ce' "$COMMIT")
+            SHORT=$(git rev-parse --short "$COMMIT")
+            SUBJECT=$(git log -1 --format='%s' "$COMMIT")
+
+            if [ "$CN" != "GitHub" ] || [ "$CE" != "noreply@github.com" ]; then
+              AN=$(git log -1 --format='%an' "$COMMIT")
+              AE=$(git log -1 --format='%ae' "$COMMIT")
+              echo "::error::FORGED MERGE COMMIT: $SHORT"
+              echo "::error::  Subject:   $SUBJECT"
+              echo "::error::  Committer: $CN <$CE>"
+              echo "::error::  Expected:  GitHub <noreply@github.com>"
+              echo "::error::  Author:    $AN <$AE>"
+              echo "::error::  Legitimate GitHub merge commits always have Committer='GitHub <noreply@github.com>'"
+              FORGED=$((FORGED + 1))
+            else
+              echo "Merge $SHORT verified: $SUBJECT"
+            fi
+          done <<< "$MERGE_COMMITS"
+
+          if [ "$FORGED" -gt 0 ]; then
+            echo ""
+            echo "::error::$FORGED forged merge commit(s) detected. This is a strong indicator of supply chain attack."
+            exit 1
+          fi
+
+          echo "All merge commits verified authentic."
+
+      - name: Check for timestamp forgery
+        run: |
+          set -euo pipefail
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          if echo "$BEFORE" | grep -qE '^0+$'; then
+            COMMITS=$(git log --format='%H %aI %cI' -10 2>/dev/null || true)
+          else
+            COMMITS=$(git log --format='%H %aI %cI' "${BEFORE}..${AFTER}" 2>/dev/null || true)
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            echo "No commits to check."
+            exit 0
+          fi
+
+          ERRORS=0
+
+          while read -r SHA AUTHOR_DATE COMMITTER_DATE; do
+            [ -z "$SHA" ] && continue
+
+            A_EPOCH=$(date -d "$AUTHOR_DATE" +%s 2>/dev/null || echo 0)
+            C_EPOCH=$(date -d "$COMMITTER_DATE" +%s 2>/dev/null || echo 0)
+            DIFF=$((C_EPOCH - A_EPOCH))
+            if [ "$DIFF" -lt 0 ]; then DIFF=$((-DIFF)); fi
+
+            SHORT=$(echo "$SHA" | head -c 8)
+
+            if [ "$DIFF" -gt 86400 ]; then
+              echo "::error::TIMESTAMP FORGERY in $SHORT: ${DIFF}s gap (Author=$AUTHOR_DATE, Committer=$COMMITTER_DATE)"
+              ERRORS=$((ERRORS + 1))
+            elif [ "$DIFF" -gt 300 ]; then
+              echo "::warning::Timestamp discrepancy in $SHORT: ${DIFF}s gap (Author=$AUTHOR_DATE, Committer=$COMMITTER_DATE)"
+            fi
+          done <<< "$COMMITS"
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "::error::$ERRORS commit(s) with likely forged timestamps."
+            exit 1
+          fi
+
+          echo "All commit timestamps appear consistent."
+
+      - name: Detect config-only pushes
+        run: |
+          set -euo pipefail
+
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          if echo "$BEFORE" | grep -qE '^0+$'; then
+            COMMITS=$(git rev-list -10 HEAD 2>/dev/null || true)
+          else
+            COMMITS=$(git rev-list "${BEFORE}..${AFTER}" 2>/dev/null || true)
+          fi
+
+          if [ -z "$COMMITS" ]; then exit 0; fi
+
+          CONFIG_RE='postcss\.config\|next\.config\|tailwind\.config\|vite\.config\|webpack\.config\|babel\.config\|jest\.config\|\.eslintrc\|\.prettierrc'
+
+          while IFS= read -r COMMIT; do
+            [ -z "$COMMIT" ] && continue
+            SHORT=$(git rev-parse --short "$COMMIT")
+
+            CHANGED=$(git diff-tree --no-commit-id --name-only -r "$COMMIT" 2>/dev/null || true)
+            [ -z "$CHANGED" ] && continue
+
+            TOTAL=0
+            CONFIG_COUNT=0
+            while IFS= read -r FILE; do
+              [ -z "$FILE" ] && continue
+              TOTAL=$((TOTAL + 1))
+              if echo "$FILE" | grep -qi "$CONFIG_RE"; then
+                CONFIG_COUNT=$((CONFIG_COUNT + 1))
+              fi
+            done <<< "$CHANGED"
+
+            if [ "$TOTAL" -gt 0 ] && [ "$TOTAL" -eq "$CONFIG_COUNT" ]; then
+              echo "::warning::Commit $SHORT modifies ONLY config files ($CONFIG_COUNT file(s)) — review for supply chain injection"
+            fi
+
+            # Check for .bat files
+            BAT=$(echo "$CHANGED" | grep -E '\.bat$' || true)
+            if [ -n "$BAT" ]; then
+              echo "::error::Batch file detected in commit $SHORT: $BAT"
+            fi
+          done <<< "$COMMITS"

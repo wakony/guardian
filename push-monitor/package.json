@@ -1,0 +1,11 @@
+{
+  "name": "push-monitor",
+  "version": "1.0.0",
+  "description": "GitHub webhook server for monitoring push event integrity",
+  "main": "push-monitor.js",
+  "scripts": {
+    "start": "node push-monitor.js"
+  },
+  "keywords": ["security", "github", "webhook", "monitoring"],
+  "license": "MIT"
+}

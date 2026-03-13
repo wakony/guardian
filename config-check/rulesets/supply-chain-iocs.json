@@ -1,0 +1,78 @@
+{
+  "name": "supply-chain-iocs",
+  "description": "Known supply chain attack indicators — obfuscation markers, blockchain C2 patterns, toolkit filenames",
+  "version": "1.0.0",
+  "rules": [
+    {
+      "id": "CAMPAIGN_IOC",
+      "severity": "CRITICAL",
+      "type": "string-match",
+      "scope": "all",
+      "detail": "Known supply chain attack indicator: '{match}'",
+      "patterns": [
+        "8-404-2",
+        "@pinetech",
+        "global['!']",
+        "global[\"!\"]",
+        "2[gWfGj;<:-93Z^C",
+        "m6:tTh^D)cBz?NM]",
+        "_$_1e42",
+        "_$af163278",
+        "_$_ccfc",
+        "sfL(",
+        "EV-4A6OE6M0E2D"
+      ]
+    },
+    {
+      "id": "CAMPAIGN_WALLET",
+      "severity": "CRITICAL",
+      "type": "string-match",
+      "scope": "all",
+      "detail": "Known threat actor wallet prefix: '{match}'",
+      "patterns": [
+        "TMfKQEd7",
+        "TXfxHUet",
+        "TQdwohPC",
+        "TGg8q6dW"
+      ]
+    },
+    {
+      "id": "CAMPAIGN_OBFUSCATION_SEED",
+      "severity": "HIGH",
+      "type": "string-match",
+      "scope": "config",
+      "detail": "Known obfuscation cipher seed in config: '{match}'",
+      "patterns": [
+        "2857687",
+        "2667686",
+        "1812138"
+      ]
+    },
+    {
+      "id": "CAMPAIGN_BLOCKCHAIN_API",
+      "severity": "CRITICAL",
+      "type": "string-match",
+      "scope": "config",
+      "detail": "Blockchain API reference in build config: '{match}' — potential C2 resolution channel",
+      "patterns": [
+        "trongrid.io",
+        "aptoslabs.com",
+        "bsc-dataseed",
+        "bsc-rpc.publicnode",
+        "eth_getTransactionByHash",
+        "fullnode.mainnet.aptoslabs"
+      ]
+    },
+    {
+      "id": "CAMPAIGN_TOOLKIT",
+      "severity": "CRITICAL",
+      "type": "filename-match",
+      "scope": "all",
+      "detail": "Known attacker toolkit file: '{match}'",
+      "patterns": [
+        "temp_auto_push.bat",
+        "temp_interactive_push.bat"
+      ]
+    }
+  ]
+}

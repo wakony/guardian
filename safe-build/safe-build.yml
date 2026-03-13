@@ -1,0 +1,73 @@
+name: Safe Build (Network Isolated)
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  # Phase 1: Install dependencies with network access
+  install-deps:
+    name: Install Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            corepack enable pnpm
+            pnpm install --frozen-lockfile
+          elif [ -f yarn.lock ]; then
+            yarn install --frozen-lockfile
+          elif [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Cache node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: node_modules
+          key: deps-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
+
+  # Phase 2: Build WITHOUT network access
+  quarantine-build:
+    name: Quarantine Build (No Network)
+    runs-on: ubuntu-latest
+    needs: install-deps
+    container:
+      image: node:20-alpine
+      options: --network none   # CRITICAL: No network access during build
+    env:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: '1'
+      # SECURITY: Do NOT add GITHUB_TOKEN, DATABASE_URL, or any secrets here
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: node_modules
+          key: deps-${{ hashFiles('**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
+
+      - name: Build (network isolated)
+        run: |
+          echo "Building in network-isolated container..."
+          echo "Any external network request will FAIL."
+          npm run build 2>&1 || {
+            EXIT=$?
+            echo ""
+            echo "::error::Build failed (exit $EXIT)."
+            echo "::error::If the failure was due to network errors, this indicates"
+            echo "::error::that build config files are trying to contact external servers."
+            echo "::error::This is a strong indicator of supply chain compromise."
+            exit $EXIT
+          }
+          echo "Build succeeded in network-isolated environment."

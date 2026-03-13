@@ -1,0 +1,55 @@
+version: '3.8'
+
+# =============================================================================
+# SAFE-BUILD — Docker Compose for Network-Isolated Builds
+# =============================================================================
+# Usage:
+#   docker-compose run deps      # Phase 1: Install dependencies (network ON)
+#   docker-compose run build     # Phase 2: Build project (network OFF)
+# =============================================================================
+
+services:
+  # Phase 1: Install dependencies (network allowed)
+  deps:
+    build:
+      context: .
+      target: deps
+    network_mode: bridge
+    volumes:
+      - node_modules:/app/node_modules
+
+  # Phase 2: Build (NO network access)
+  build:
+    build:
+      context: .
+      target: build
+    network_mode: "none"         # CRITICAL: No network access during build
+    volumes:
+      - node_modules:/app/node_modules:ro   # Read-only deps
+      - ./src:/app/src:ro                   # Read-only source
+      - ./public:/app/public:ro             # Read-only public assets
+      - build_output:/app/.next             # Build output
+    environment:
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # SECURITY: The following are explicitly NOT included:
+      # - GITHUB_TOKEN
+      # - DATABASE_URL
+      # - SUPABASE_URL
+      # - SUPABASE_ANON_KEY
+      # - STRIPE_SECRET_KEY
+      # - Any other secret
+
+  # Optional: Run production server from build output
+  serve:
+    build:
+      context: .
+      target: production
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+
+volumes:
+  node_modules:
+  build_output:

@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# Pre-commit hook: Supply chain integrity check
+# Install: cp pre-commit /path/to/repo/.git/hooks/pre-commit && chmod +x /path/to/repo/.git/hooks/pre-commit
+set -euo pipefail
+
+RED='\033[0;31m'
+YELLOW='\033[0;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+ERRORS=0
+WARNINGS=0
+
+echo "Running supply chain integrity check..."
+
+# Get staged files
+STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+# ── Check 1: Config file sizes ──
+while IFS= read -r FILE; do
+  case "$FILE" in
+    postcss.config.*|next.config.*|tailwind.config.*|vite.config.*|webpack.config.*|babel.config.*|jest.config.*|rollup.config.*)
+      if [ -f "$FILE" ]; then
+        SIZE=$(wc -c < "$FILE")
+        if [ "$SIZE" -gt 10000 ]; then
+          echo -e "${RED}[CRITICAL]${NC} $FILE is $SIZE bytes (expected < 10KB)"
+          ERRORS=$((ERRORS + 1))
+        elif [ "$SIZE" -gt 5000 ]; then
+          echo -e "${YELLOW}[WARNING]${NC} $FILE is $SIZE bytes (unusually large)"
+          WARNINGS=$((WARNINGS + 1))
+        fi
+      fi
+      ;;
+  esac
+done <<< "$STAGED"
+
+# ── Check 2: Trailing whitespace payloads ──
+while IFS= read -r FILE; do
+  case "$FILE" in
+    *.config.*|postcss.config.*|next.config.*|tailwind.config.*|vite.config.*)
+      if [ -f "$FILE" ]; then
+        MATCHES=$(grep -nP '\S\s{50,}' "$FILE" 2>/dev/null || true)
+        if [ -n "$MATCHES" ]; then
+          echo -e "${RED}[CRITICAL]${NC} $FILE has trailing whitespace payload:"
+          echo "$MATCHES" | head -3
+          ERRORS=$((ERRORS + 1))
+        fi
+      fi
+      ;;
+  esac
+done <<< "$STAGED"
+
+# ── Check 3: Suspicious imports ──
+while IFS= read -r FILE; do
+  case "$FILE" in
+    *.config.*|postcss.config.*|next.config.*|tailwind.config.*|vite.config.*)
+      if [ -f "$FILE" ]; then
+        for PATTERN in "createRequire" "child_process" "execSync" "spawnSync"; do
+          if grep -q "$PATTERN" "$FILE" 2>/dev/null; then
+            echo -e "${RED}[CRITICAL]${NC} $FILE contains '$PATTERN'"
+            ERRORS=$((ERRORS + 1))
+          fi
+        done
+        if grep -qP 'eval\s*\(' "$FILE" 2>/dev/null; then
+          echo -e "${RED}[CRITICAL]${NC} $FILE contains eval()"
+          ERRORS=$((ERRORS + 1))
+        fi
+      fi
+      ;;
+  esac
+done <<< "$STAGED"
+
+# ── Check 4: Known indicator strings ──
+IOCS=("8-404-2" "@pinetech" "TMfKQEd7" "TXfxHUet" "trongrid.io" "aptoslabs.com" "bsc-dataseed" "2[gWfGj;<:-93Z^C" "m6:tTh^D)cBz?NM]")
+while IFS= read -r FILE; do
+  if [ -f "$FILE" ]; then
+    for IOC in "${IOCS[@]}"; do
+      if grep -q "$IOC" "$FILE" 2>/dev/null; then
+        echo -e "${RED}[CRITICAL]${NC} $FILE contains known indicator: $IOC"
+        ERRORS=$((ERRORS + 1))
+      fi
+    done
+  fi
+done <<< "$STAGED"
+
+# ── Check 5: Suspicious batch files ──
+while IFS= read -r FILE; do
+  case "$FILE" in
+    temp_*push*.bat|temp_*interactive*.bat|auto_push*.bat)
+      echo -e "${RED}[CRITICAL]${NC} Suspicious batch file staged: $FILE"
+      ERRORS=$((ERRORS + 1))
+      ;;
+    *.bat)
+      echo -e "${YELLOW}[WARNING]${NC} Batch file staged: $FILE"
+      WARNINGS=$((WARNINGS + 1))
+      ;;
+  esac
+done <<< "$STAGED"
+
+# ── Check 6: Blockchain APIs in configs ──
+while IFS= read -r FILE; do
+  case "$FILE" in
+    *.config.*|postcss.config.*|next.config.*|tailwind.config.*)
+      if [ -f "$FILE" ]; then
+        for API in "trongrid" "aptoslabs" "bsc-dataseed" "bsc-rpc.publicnode"; do
+          if grep -q "$API" "$FILE" 2>/dev/null; then
+            echo -e "${RED}[CRITICAL]${NC} $FILE references blockchain API: $API"
+            ERRORS=$((ERRORS + 1))
+          fi
+        done
+      fi
+      ;;
+  esac
+done <<< "$STAGED"
+
+# ── Result ──
+echo ""
+if [ "$ERRORS" -gt 0 ]; then
+  echo -e "${RED}BLOCKED: $ERRORS critical issue(s) found. Commit rejected.${NC}"
+  echo "Review findings above and clean files before committing."
+  exit 1
+elif [ "$WARNINGS" -gt 0 ]; then
+  echo -e "${YELLOW}PASSED with $WARNINGS warning(s).${NC}"
+  exit 0
+else
+  echo -e "${GREEN}PASSED: No supply chain indicators detected.${NC}"
+  exit 0
+fi

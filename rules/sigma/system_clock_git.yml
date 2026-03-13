@@ -1,0 +1,31 @@
+title: System Time Change Followed by Git Operation (Timestamp Forgery)
+id: a8404200-0003-0001-0001-000000000001
+status: experimental
+description: |
+  Detects system clock manipulation followed by git operations — a timestamp forgery pattern.
+  Windows Event ID 4616 (System Time Change) followed by git.exe execution within 5 minutes
+  indicates backdating commits to blend malicious changes into normal git history.
+author: Guardian Project
+date: 2026/02/20
+modified: 2026/02/20
+references:
+  - https://attack.mitre.org/techniques/T1070/006/
+tags:
+  - attack.defense_evasion
+  - attack.t1070.006
+logsource:
+  product: windows
+  service: security
+detection:
+  selection_time_change:
+    EventID: 4616
+  selection_git:
+    EventID: 4688
+    NewProcessName|endswith: '\git.exe'
+  timeframe: 5m
+  condition: selection_time_change | near selection_git
+level: critical
+falsepositives:
+  - NTP time synchronization that coincidentally occurs before a git operation (unlikely pattern)
+  - Timezone changes during travel immediately followed by git operations
+  - Virtual machine time sync corrections on resume from suspend

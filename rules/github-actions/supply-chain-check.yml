@@ -1,0 +1,159 @@
+name: Supply Chain Integrity Check
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  config-integrity:
+    name: Configuration Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Config file size check
+        run: |
+          set -euo pipefail
+          EXIT_CODE=0
+          for f in postcss.config.* next.config.* tailwind.config.* vite.config.* \
+                   webpack.config.* babel.config.* jest.config.* rollup.config.* \
+                   .eslintrc.* prettier.config.* commitlint.config.*; do
+            if [ -f "$f" ]; then
+              size=$(wc -c < "$f")
+              if [ "$size" -gt 10000 ]; then
+                echo "::error file=$f::$f is $size bytes (max expected: 10000) — possible payload injection"
+                EXIT_CODE=1
+              elif [ "$size" -gt 5000 ]; then
+                echo "::warning file=$f::$f is $size bytes (unusually large for a config file)"
+              fi
+            fi
+          done
+          exit $EXIT_CODE
+
+      - name: Suspicious imports in configs
+        run: |
+          set -euo pipefail
+          EXIT_CODE=0
+          for f in postcss.config.* next.config.* tailwind.config.* vite.config.* \
+                   webpack.config.* babel.config.*; do
+            if [ -f "$f" ]; then
+              for pattern in "createRequire" "child_process" "execSync" "spawnSync"; do
+                if grep -q "$pattern" "$f"; then
+                  echo "::error file=$f::$f contains '$pattern' — should not appear in build config"
+                  EXIT_CODE=1
+                fi
+              done
+              if grep -qP 'eval\s*\(' "$f"; then
+                echo "::error file=$f::$f contains eval() — possible payload execution"
+                EXIT_CODE=1
+              fi
+              if grep -qP 'Function\s*\(' "$f"; then
+                echo "::error file=$f::$f contains Function() constructor — possible payload execution"
+                EXIT_CODE=1
+              fi
+            fi
+          done
+          exit $EXIT_CODE
+
+      - name: Trailing whitespace payload detection
+        run: |
+          set -euo pipefail
+          EXIT_CODE=0
+          for f in postcss.config.* next.config.* tailwind.config.* vite.config.* \
+                   webpack.config.* babel.config.* jest.config.*; do
+            if [ -f "$f" ]; then
+              if grep -qP '\S\s{50,}' "$f"; then
+                echo "::error file=$f::$f has lines with 50+ trailing whitespace (hidden payload indicator)"
+                EXIT_CODE=1
+              fi
+            fi
+          done
+          exit $EXIT_CODE
+
+      - name: Known indicator scan
+        run: |
+          set -euo pipefail
+          EXIT_CODE=0
+          PATTERNS=(
+            "8-404-2"
+            "@pinetech"
+            "trongrid.io"
+            "aptoslabs.com"
+            "bsc-dataseed"
+            "eth_getTransactionByHash"
+            "TMfKQEd7"
+            "TXfxHUet"
+          )
+          for pattern in "${PATTERNS[@]}"; do
+            MATCHES=$(grep -rn "$pattern" \
+              --include="*.js" --include="*.mjs" --include="*.ts" \
+              --include="*.json" --include="*.yml" --include="*.yaml" \
+              . 2>/dev/null | grep -v node_modules || true)
+            if [ -n "$MATCHES" ]; then
+              echo "::error::Indicator '$pattern' found:"
+              echo "$MATCHES" | head -5
+              EXIT_CODE=1
+            fi
+          done
+          exit $EXIT_CODE
+
+      - name: Toolkit artifact detection
+        run: |
+          set -euo pipefail
+          FOUND=$(find . -maxdepth 2 -type f \( \
+            -name "temp_*push*.bat" -o \
+            -name "temp_*interactive*.bat" -o \
+            -name "auto_push*.bat" \
+          \) 2>/dev/null || true)
+          if [ -n "$FOUND" ]; then
+            echo "::error::Toolkit artifacts detected:"
+            echo "$FOUND"
+            exit 1
+          fi
+
+      - name: Merge commit verification
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          git log --merges --format="%H|%cn|%ce" HEAD~10..HEAD 2>/dev/null | while IFS='|' read sha cn ce; do
+            [ -z "$sha" ] && continue
+            if [ "$cn" != "GitHub" ] || [ "$ce" != "noreply@github.com" ]; then
+              echo "::error::Forged merge: $sha has Committer='$cn <$ce>'"
+              exit 1
+            fi
+          done
+
+      - name: Blockchain RPC in configs
+        run: |
+          set -euo pipefail
+          REFS=$(grep -rn "trongrid\|aptoslabs\|bsc-dataseed\|bsc-rpc.publicnode" \
+            --include="*.config.*" --include="postcss*" --include="next.config*" \
+            --include="tailwind*" --include="vite*" --include="webpack*" . 2>/dev/null || true)
+          if [ -n "$REFS" ]; then
+            echo "::error::Blockchain API references in build configs:"
+            echo "$REFS"
+            exit 1
+          fi
+
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+      - name: Install and audit
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --ignore-scripts 2>/dev/null || true
+          elif [ -f package.json ]; then
+            npm install --ignore-scripts 2>/dev/null || true
+          else
+            echo "No package.json found."
+            exit 0
+          fi
+          npm audit --audit-level=high 2>/dev/null || echo "::warning::npm audit found vulnerabilities"

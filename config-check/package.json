@@ -1,0 +1,47 @@
+{
+  "name": "guardian-config-check",
+  "version": "1.0.0",
+  "description": "Build configuration integrity scanner — detects supply chain compromise indicators in config files",
+  "main": "index.js",
+  "bin": {
+    "guardian-config-check": "./bin/cli.js"
+  },
+  "files": [
+    "bin/",
+    "rules/",
+    "rulesets/",
+    "index.js",
+    "scanner.js",
+    "formatter.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "scan": "node bin/cli.js",
+    "scan:verbose": "node bin/cli.js --verbose",
+    "scan:json": "node bin/cli.js --json",
+    "test": "node test.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "security",
+    "supply-chain",
+    "config",
+    "integrity",
+    "scanner",
+    "devsecops",
+    "ci-cd",
+    "pre-commit",
+    "supply-chain-attack",
+    "threat-detection"
+  ],
+  "author": "Wakony & Claude",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wakony/guardian",
+    "directory": "config-check"
+  }
+}
