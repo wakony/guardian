@@ -102,7 +102,7 @@ Detection rules and IOCs in this toolkit are based on the **Cross-Chain TxDataHi
 - [Parts 1-2 Technical Analysis (GitHub)](https://github.com/Ransom-ISAC-Org/LOCKSTAR/tree/main/XCTDH%20Crypto%20Heist%20-%20Parts%201%20and%202) — YARA rules, detection tooling, and payload simulation
 - [Part 4: How Financial Forensics Proved North Korea's Blockchain Malware](https://crystalintelligence.com/investigations/how-we-proved-north-koreas-blockchain-malware-campaign/) — Crystal Intelligence & Ransom-ISAC collaboration on attribution and financial forensics
 
-Identity forgery and timestamp manipulation detection (YARA rules, Sigma rules, and pre-commit checks) based on original analysis by **Ben Bishop**.
+Identity forgery and timestamp manipulation detection (YARA rules, Sigma rules, and pre-commit checks) based on original analysis by **Wakony**.
 
 ## License
 
