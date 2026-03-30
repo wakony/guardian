@@ -1,3 +1,5 @@
+> **Guardian has been succeeded by [CerberusWard](https://github.com/wakony/cerberusward).** CerberusWard includes everything Guardian does plus 10 additional detection phases, 56 IOC rules, binary analysis, SARIF output, monorepo support, and more. New users should use CerberusWard.
+
 # Guardian
 
 Build integrity and supply chain defense toolkit.
@@ -107,3 +109,5 @@ Identity forgery and timestamp manipulation detection (YARA rules, Sigma rules, 
 ## License
 
 MIT
+
+Author: Wakony
